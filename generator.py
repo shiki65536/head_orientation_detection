@@ -7,92 +7,22 @@ import tkinter.filedialog
 import glob
 
 
-def head_orientation_vis(keypoints, epsilon=1e-8, threshold=200):
-    # Define the keypoints
-    right_eye_v = keypoints[5] == 2
-    left_eye_v = keypoints[8] == 2
-    right_shoulder_v = keypoints[11] == 2
-    left_shoulder_v = keypoints[17] == 2
-    head = (keypoints[0], keypoints[1])
-    right_eye = (keypoints[3], keypoints[4])
-    left_eye = (keypoints[6], keypoints[7])
-    neck = (keypoints[12], keypoints[13])
-
-    if right_eye[1] <=0 or left_eye[1] <= 0:
-        return None
-    # double check hand visibility
-    right_hand_x, right_hand_y, right_hand_v = keypoints[30], keypoints[31], keypoints[32]
-    right_shoulder_x, right_shoulder_y = keypoints[15], keypoints[16]
-    distance_right = ((right_hand_x - right_shoulder_x) ** 2 + (right_hand_y - right_shoulder_y) ** 2) ** 0.5
-    if distance_right < threshold:
-        right_shoulder_v = 2
-
-    # double check shoulder visibility
-    left_hand_x, left_hand_y, left_hand_v = keypoints[39], keypoints[40], keypoints[41]
-    left_shoulder_x, left_shoulder_y = keypoints[18], keypoints[19]
-    distance_left = ((left_hand_x - left_shoulder_x) ** 2 + (left_hand_y - left_shoulder_y) ** 2) ** 0.5
-    if distance_left < threshold:
-        left_shoulder_v = 2
-
-    # Calculate midpoint X coordinate between head and neck
-    midpoint_x = (head[0] + neck[0]) / 2
-
-    # Determine if both eyes are to the right of the midpoint
-    eyes_right = right_eye[0] >= midpoint_x and left_eye[0] >= midpoint_x
-
-    # Determine if both eyes are to the left of the midpoint
-    eyes_left = right_eye[0] <= midpoint_x and left_eye[0] <= midpoint_x
-
-
-    # Check visibility conditions and adjust angle based on head_neck x offset
-    if right_eye_v and left_eye_v and right_shoulder_v and left_shoulder_v:
-        # Adjust angle based on eyes position relative to midpoint
-        if eyes_right:
-            return 45
-        elif eyes_left:
-            return -45
-        else:
-            return 0
-    elif right_eye_v and left_eye_v and right_shoulder_v:
-        return 45
-    elif right_eye_v and left_eye_v and left_shoulder_v:
-        return -45
-    elif right_eye_v and right_shoulder_v:
-        return 90
-    elif left_eye_v and left_shoulder_v:
-        return -90
-    elif not right_eye_v and not left_eye_v:
-        if eyes_right:
-            return 135
-        elif eyes_left:
-            return -135
-        else:
-            return 180
-    elif right_shoulder_v:
-        return 135
-    elif left_shoulder_v:
-        return -135
-    else:
-        return None  # In case none of the conditions are met
-
-
-def head_orientation_math(keypoints, epsilon=1e-8, threshold=200, tolerance=500):
+def head_orientation_math(keypoints, epsilon=1e-8, threshold=0.15, tolerance=500):
     # Define the keypoints
     head = (keypoints[0], keypoints[1])
     right_eye = (keypoints[3], keypoints[4])
     left_eye = (keypoints[6], keypoints[7])
     neck = (keypoints[12], keypoints[13])
-
-    head_neck_x_offset = head[0] - neck[0]
 
     # Calculate vectors
     neck_to_head = (head[0] - neck[0], head[1] - neck[1])
     neck_to_right_eye = (right_eye[0] - neck[0], right_eye[1] - neck[1])
     neck_to_left_eye = (left_eye[0] - neck[0], left_eye[1] - neck[1])
+    eye_to_eye = (left_eye[0] - right_eye[0], left_eye[1] - right_eye[1])
 
     # Calculate angles between vectors
-    angle_neck_to_right_eye = math.atan2(neck_to_right_eye[1], neck_to_right_eye[0] )#+ epsilon)
-    angle_neck_to_left_eye = math.atan2(neck_to_left_eye[1], neck_to_left_eye[0] )#+ epsilon)
+    angle_neck_to_right_eye = math.atan2(neck_to_right_eye[1], neck_to_right_eye[0] ) #+ epsilon)
+    angle_neck_to_left_eye = math.atan2(neck_to_left_eye[1], neck_to_left_eye[0] ) #+ epsilon)
 
     # Calculate the average angle
     angle_radians = (angle_neck_to_right_eye + angle_neck_to_left_eye) / 2
@@ -101,51 +31,60 @@ def head_orientation_math(keypoints, epsilon=1e-8, threshold=200, tolerance=500)
     angle_degrees = math.degrees(angle_radians)
 
     # Calculate vertical distance between two eyes and head
-    vertical_distance = abs(neck_to_head[1])
+    vertical_distance = abs(neck_to_head[1]) + epsilon
 
     # Adjust angle based on the vertical distance
     angle_adjustment = 0.1 * vertical_distance  # You can adjust the multiplier as needed
     angle_degrees += angle_adjustment
 
+    # Calculate horizontal distance between eyes
+    horizontal_distance = abs(eye_to_eye[0]) + epsilon
 
-    # Adjust angle based on facing or being against the camera
-    angle_degrees = (angle_degrees + 360) % 360
+    # Calculate the ratio of horizontal distance to vertical distance
+    ratio = horizontal_distance / vertical_distance
 
-    # Additional adjustment for the front-facing angle
-    angle_degrees -= 270
+    angle_degrees += 90
 
-    if 10 >= angle_degrees >= -10:
-        angle_degrees = 0
-    elif -40 <= angle_degrees < -10:
-        angle_degrees = -30
-    elif -80 <= angle_degrees < -40:
-        angle_degrees = -60
-    elif -100 <= angle_degrees < -80:
+    if 15 >= angle_degrees >= -15:
+        if 0.4 < ratio:
+            if angle_degrees > 0:
+                angle_degrees = 30
+            else:
+                angle_degrees = -30
+        else:
+            angle_degrees = 0
+    elif -60 <= angle_degrees < -15:
+        if ratio < 0.14:
+            angle_degrees = -60
+        else:
+            angle_degrees = -30
+    elif -70 <= angle_degrees < -60:
+        # angle_degrees = -60
+        if ratio < 0.07:
+            angle_degrees = -90
+        else:
+            angle_degrees = -60
+    elif -100 <= angle_degrees < -70:
         angle_degrees = -90
-    # elif -110 <= angle_degrees < -100:
-    #     angle_degrees = -120
-    # elif -165 <= angle_degrees < -110:
-    #     angle_degrees = -150
-    # elif angle_degrees < -170 or 170 < angle_degrees:
-    #     angle_degrees = 180
-    elif 10 < angle_degrees <= 40:
-        angle_degrees = 30
-    elif 40 < angle_degrees <= 80:
-        angle_degrees = 60
-    elif 80 < angle_degrees <= 100:
+    elif 15 < angle_degrees <= 60:
+        if ratio < 0.14:
+            angle_degrees = 60
+        else:
+            angle_degrees = 30
+    elif 60 < angle_degrees <= 70:
+        # angle_degrees = 60
+        if ratio < 0.07:
+            angle_degrees = 90
+        else:
+            angle_degrees = 60
+    elif 70 < angle_degrees <= 100:
         angle_degrees = 90
-    # elif 100 < angle_degrees <= 155:
-    #     angle_degrees = 120
-    # elif 155 < angle_degrees <= 170:
-    #     angle_degrees = 150
     else:
         angle_degrees = 180
-
     return angle_degrees
 
 
-def combined_head_orientation(keypoints, epsilon=1e-8, threshold=200, tolerance=500):
-    vis_result = head_orientation_vis(keypoints, epsilon, threshold)
+def head_orientation_vis(keypoints, epsilon=1e-8, threshold=200, tolerance=500):
     math_result = head_orientation_math(keypoints, epsilon, threshold, tolerance)
 
     # Define the keypoints
@@ -158,8 +97,22 @@ def combined_head_orientation(keypoints, epsilon=1e-8, threshold=200, tolerance=
     left_eye = (keypoints[6], keypoints[7])
     neck = (keypoints[12], keypoints[13])
 
-    # if right_eye[1] <= 0 or left_eye[1] <= 0:
-    #     return None
+    if right_eye[1] <= 0 or left_eye[1] <= 0:
+        return None
+    
+    # double check hand visibility
+    # right_hand_x, right_hand_y, right_hand_v = keypoints[30], keypoints[31], keypoints[32]
+    # right_shoulder_x, right_shoulder_y = keypoints[15], keypoints[16]
+    # distance_right = ((right_hand_x - right_shoulder_x) ** 2 + (right_hand_y - right_shoulder_y) ** 2) ** 0.5
+    # if distance_right < threshold:
+    #     right_shoulder_v = 2
+    #
+    # # double check shoulder visibility
+    # left_hand_x, left_hand_y, left_hand_v = keypoints[39], keypoints[40], keypoints[41]
+    # left_shoulder_x, left_shoulder_y = keypoints[18], keypoints[19]
+    # distance_left = ((left_hand_x - left_shoulder_x) ** 2 + (left_hand_y - left_shoulder_y) ** 2) ** 0.5
+    # if distance_left < threshold:
+    #     left_shoulder_v = 2
 
     # Calculate midpoint X coordinate between head and neck
     midpoint_x = (head[0] + neck[0]) / 2
@@ -189,11 +142,17 @@ def combined_head_orientation(keypoints, epsilon=1e-8, threshold=200, tolerance=
         return math_result
         return (math_result + vis_result) / 2  #math_result #-45
     elif right_eye_v and right_shoulder_v:
-        return 90
-        return (math_result + vis_result) / 2  #90
+        if not left_shoulder_v:
+            return 90
+            return (math_result + vis_result) / 2  #90
+        else:
+            return math_result
     elif left_eye_v and left_shoulder_v:
-        return -90
-        return (math_result + vis_result) / 2 #-90
+        if not right_shoulder_v:
+            return -90
+            return (math_result + vis_result) / 2 #-90
+        else:
+            return math_result
     elif not right_eye_v and not left_eye_v:
         if eyes_right:
             return 180 - math_result
@@ -240,7 +199,7 @@ def get_arrow(angle):
 
 
 class ImageViewer(tk.Tk):
-    def __init__(self, images, annotations):
+    def __init__(self, images, annotations, output_json_path="None"):
         super().__init__()
 
         self.images = images
@@ -250,7 +209,15 @@ class ImageViewer(tk.Tk):
 
         self.show_skeleton = True
         self.show_keypoints = True
-        self.show_box = True
+        self.show_box = False
+        self.display_output_info_flag = True
+        self.output_json_path = output_json_path
+
+        self.track_id_to_color = {}
+
+        self.additional_data = {}
+        if output_json_path is not None and output_json_path != "None":
+            self.load_output_json(output_json_path)
 
         # Adjust the window width to screen width
         self.geometry(f"{self.winfo_screenwidth()}x1")
@@ -267,8 +234,8 @@ class ImageViewer(tk.Tk):
         self.bind("<Right>", self.next_image)
 
         # JSON
-        self.load_new_json_button = tk.Button(self, text="Load New JSON", command=self.load_new_json)
-        self.load_new_json_button.pack(side=tk.LEFT)
+        self.load_raw_json_button = tk.Button(self, text="Load New JSON", command=self.load_raw_json)
+        self.load_raw_json_button.pack(side=tk.LEFT)
 
         # GO TO FRAME
         self.frame_entry = tk.Entry(self, width=10)
@@ -276,15 +243,43 @@ class ImageViewer(tk.Tk):
         self.goto_button = tk.Button(self, text="Go to Frame", command=self.goto_frame)
         self.goto_button.pack(side=tk.LEFT)
 
-        #save
-        self.save_button = tk.Button(self, text="Save Results", command=self.process_frames)
-        self.save_button.pack(side=tk.LEFT)
+        # #save
+        # self.save_button = tk.Button(self, text="Save Results", command=self.process_frames)
+        # self.save_button.pack(side=tk.LEFT)
 
-        self.stop_button = tk.Button(self, text="Stop Processing", command=self.stop_processing)
-        self.stop_button.pack(side=tk.LEFT)
-
+        # self.stop_button = tk.Button(self, text="Stop Processing", command=self.stop_processing)
+        # self.stop_button.pack(side=tk.LEFT)
+        #
         self.process_all_button = tk.Button(self, text="Process All", command=self.process_all_jsons)
         self.process_all_button.pack(side=tk.LEFT)
+
+        # self.track_id_label = tk.Label(self, text="Select Track ID:")
+        # self.track_id_label.pack(side=tk.LEFT)
+
+        # self.track_id_combobox = ttk.Combobox(self, state="readonly")
+        # self.track_id_combobox.pack(side=tk.LEFT)
+        # Dropdown for Track ID
+        # self.selected_track_id_var = tk.StringVar(self)
+        # self.track_id_dropdown = tk.OptionMenu(self, self.selected_track_id_var, "Select Track ID")
+        # self.track_id_dropdown.pack(side=tk.LEFT)
+
+        # Track ID Input
+        self.track_id_label = tk.Label(self, text="Track ID:")
+        self.track_id_label.pack(side=tk.LEFT)
+
+        self.track_id_entry = tk.Entry(self, width=10)
+        self.track_id_entry.pack(side=tk.LEFT)
+
+        # Orientation Input
+        self.orientation_label = tk.Label(self, text="New Orientation:")
+        self.orientation_label.pack(side=tk.LEFT)
+
+        self.orientation_entry = tk.Entry(self, width=10)
+        self.orientation_entry.pack(side=tk.LEFT)
+
+        # Save Button
+        self.save_button = tk.Button(self, text="Save Orientation", command=self.save_orientation)
+        self.save_button.pack(side=tk.LEFT)
 
         self.toggle_skeleton_button = tk.Button(self, text="Toggle Skeleton", command=self.toggle_skeleton)
         self.toggle_skeleton_button.pack(side=tk.LEFT)
@@ -292,12 +287,12 @@ class ImageViewer(tk.Tk):
         self.toggle_keypoints_button = tk.Button(self, text="Toggle Keypoints", command=self.toggle_keypoints)
         self.toggle_keypoints_button.pack(side=tk.LEFT)
 
+        self.toggle_output_info_button = tk.Button(self, text="Toggle Info", command=self.toggle_output_info)
+        self.toggle_output_info_button.pack(side=tk.LEFT)
+
         self.toggle_box_button = tk.Button(self, text="Toggle Box", command=self.toggle_box)
         self.toggle_box_button.pack(side=tk.LEFT)
-
-
         #self.process_frames()
-
 
     def load_and_resize_image(self, image_path):
         with Image.open(image_path) as img:
@@ -328,7 +323,7 @@ class ImageViewer(tk.Tk):
 
             return img, scale_factor
 
-
+    # draw
     def draw_keypoints(self, keypoints, scale_factor):
         # Indices of joints to be displayed
         indices_to_draw = [1, 2, 3, 4, 5, 6, 7]  # Based on the list you provided
@@ -344,15 +339,6 @@ class ImageViewer(tk.Tk):
                     self.canvas.create_oval(x - 2, y - 2, x + 2, y + 2, fill='white')
                 elif v == 1:  # Occluded
                     self.canvas.create_oval(x - 2, y - 2, x + 2, y + 2, fill='black')
-                # Add an else statement if you want to handle the invisible joints differently
-        # for i in range(0, len(keypoints), 3):
-        #     x, y, v = keypoints[i:i + 3]
-        #     x *= scale_factor
-        #     y *= scale_factor
-        #     if v == 2:  # If visibility is 2 (visible)
-        #         self.canvas.create_oval(x-2, y-3, x+2, y+2, fill='white')
-        #     elif v == 1:  # If visibility is 1 (occluded)
-        #         self.canvas.create_oval(x-2, y-2, x+2, y+2, fill='black')
 
     def draw_skeleton(self, keypoints, scale_factor, color):
         # Define the pairs of keypoints to connect
@@ -425,30 +411,68 @@ class ImageViewer(tk.Tk):
         #                      anchor=tk.NW, fill='white')
         return (head_box_min_x, head_box_min_y, head_box_max_y)
 
+    def load_image(self, index):
+        # Clear the canvas
+        self.canvas.delete("all")
 
-    def toggle_skeleton(self):
-        self.show_skeleton = not self.show_skeleton
-        self.load_image(self.current_image_index)
+        # Load and show the image
+        img_path = "images/" + self.images[index]['file_name']
+        img, scale_factor = self.load_and_resize_image(img_path)
 
-    def toggle_keypoints(self):
-        self.show_keypoints = not self.show_keypoints
-        self.load_image(self.current_image_index)
+        # Print the image_id
+        image_id = self.images[index]['id']
+        print(f"===================================== Image ID: {image_id} =====================================")
 
-    def toggle_box(self):
-        self.show_box = not self.show_box
-        self.load_image(self.current_image_index)
+        # Display Image ID on the canvas
+        canvas_width = self.winfo_screenwidth()
+        self.canvas.create_text(canvas_width // 2, 10, text=f"Image ID: {image_id}", font=('Arial', 12), anchor=tk.N,
+                                fill="white")
+
+        # color
+        colors = ["salmon", "turquoise", "orange", "chartreuse", "orchid"]
+
+        # Get annotations for the current image
+        annotations_for_image = [ann for ann in self.annotations if ann['image_id'] == image_id]
+
+        # Determine head orientation and display it on the canvas
+        for annotation in annotations_for_image:
+            keypoints = annotation['keypoints']
+            track_id = annotation.get("track_id", "N/A")
+
+            if track_id not in self.track_id_to_color:
+                self.track_id_to_color[track_id] = colors[len(self.track_id_to_color) % len(colors)]
+
+            color = self.track_id_to_color[track_id]
+
+            if self.show_skeleton:
+                self.draw_skeleton(keypoints, scale_factor, color)
+            if self.show_keypoints:
+                self.draw_keypoints(keypoints, scale_factor)
+            # self.draw_bounding_box(keypoints, scale_factor, track_id)
+            (cord_x, cord_y, cord_y_top) = self.draw_head_box(keypoints, scale_factor, track_id)
+
+            # self.display_head_orientation(keypoints, min(keypoints[0::3]) * scale_factor, max(keypoints[1::3]) * scale_factor, track_id)
+            self.display_head_orientation(keypoints, cord_x, cord_y, cord_y_top, track_id)
+            # Inside load_image or after displaying head orientation for an annotation
+            self.display_output_info(image_id, track_id, cord_x, cord_y)
+
+        # Update the canvas scroll region
+        self.canvas.config(scrollregion=self.canvas.bbox(tk.ALL))
 
     def display_head_orientation(self, keypoints, cord_x, cord_y, cord_y_top, track_id):
-        orientation = combined_head_orientation(keypoints)
+        orientation = head_orientation_vis(keypoints)
+        # orientation = head_orientation_math(keypoints)
         arrow = get_arrow(orientation)
         info_text = f"{arrow} ({orientation}°)"
+        # info_text = f"{arrow} ({orientation}°)" if str(orientation).lstrip("-").isdigit() else f"{arrow}"
         id_text = f"id:{track_id}"
         # self.canvas.create_text(cord_x, cord_y , text=info_text, font=('Arial', 9), anchor=tk.NW, fill='white')
 
-        self.canvas.create_text(cord_x + 1, cord_y + 1, text=info_text, font=('Arial', 10), anchor=tk.NW, fill="black")
-        self.canvas.create_text(cord_x, cord_y, text=info_text, font=('Arial', 10), anchor=tk.NW, fill="white")
+        self.canvas.create_text(cord_x + 1, cord_y + 21, text=info_text, font=('Arial', 10), anchor=tk.NW, fill="black")
+        self.canvas.create_text(cord_x, cord_y + 20, text=info_text, font=('Arial', 10), anchor=tk.NW, fill="white")
 
-        self.canvas.create_text(cord_x + 1, cord_y_top - 10 + 1, text=id_text, font=('Arial', 8), anchor=tk.NW, fill="black")
+        self.canvas.create_text(cord_x + 1, cord_y_top - 10 + 1, text=id_text, font=('Arial', 8), anchor=tk.NW,
+                                fill="black")
         self.canvas.create_text(cord_x, cord_y_top - 10, text=id_text, font=('Arial', 8), anchor=tk.NW, fill="white")
 
         result = {
@@ -464,60 +488,28 @@ class ImageViewer(tk.Tk):
 
         # Print the head orientation for each track_id to the console
         print(f"Track ID: {track_id}  Orientation: {orientation}°")
+        
+    # display
+    def display_output_info(self, image_id, track_id, base_x, base_y):
+        if not self.display_output_info_flag:
+            return
+            # Convert to integers if necessary
+        image_id = int(image_id) - 1
+        track_id = int(track_id)
 
-    def load_image(self, index):
-        # Clear the canvas
-        self.canvas.delete("all")
+        output_info = next((item for item in self.additional_data if
+                                int(item["image_id"]) == image_id and int(item["track_id"]) == track_id), None)
 
-        # Load and show the image
-        img_path = "images/" + self.images[index]['file_name']
-        img, scale_factor = self.load_and_resize_image(img_path)
+        if output_info:
+            orientation = output_info.get("orientation", "N/A")
+            info_text = f"Record: {orientation}°"
+            vertical_offset = 40
+            self.canvas.create_text(base_x, base_y + vertical_offset, text=info_text, font=('Arial', 10), anchor=tk.NW,
+                                    fill="white")
+        else:
+            print(f"No additional info found for image_id {image_id}, track_id {track_id}")  # Confirming failed search
 
-        # Print the image_id
-        image_id = self.images[index]['id']
-        print(f"===================================== Image ID: {image_id} =====================================")
-
-        # Display Image ID on the canvas
-        canvas_width = self.winfo_screenwidth()
-        self.canvas.create_text(canvas_width // 2, 10, text=f"Image ID: {image_id}", font=('Arial', 12), anchor=tk.N, fill="white")
-
-        # color
-        colors = ["salmon", "turquoise", "orange", "chartreuse", "orchid"]
-        track_id_to_color = {}
-
-        # Determine head orientation and display it on the canvas
-        for annotation in self.annotations:
-            if annotation['image_id'] == image_id:
-                keypoints = annotation['keypoints']
-                track_id = annotation.get("track_id", "N/A")
-                if track_id not in track_id_to_color:
-                    track_id_to_color[track_id] = colors[len(track_id_to_color) % len(colors)]
-
-                color = track_id_to_color[track_id]
-
-                if self.show_skeleton:
-                    self.draw_skeleton(keypoints, scale_factor, color)
-                if self.show_keypoints:
-                    self.draw_keypoints(keypoints, scale_factor)
-                #self.draw_bounding_box(keypoints, scale_factor, track_id)
-                (cord_x, cord_y, cord_y_top) = self.draw_head_box(keypoints, scale_factor, track_id)
-
-                # self.display_head_orientation(keypoints, min(keypoints[0::3]) * scale_factor, max(keypoints[1::3]) * scale_factor, track_id)
-                self.display_head_orientation(keypoints, cord_x, cord_y, cord_y_top, track_id)
-
-        # Update the canvas scroll region
-        self.canvas.config(scrollregion=self.canvas.bbox(tk.ALL))
-
-    def prev_image(self, event):
-        if self.current_image_index > 0:
-            self.current_image_index -= 1
-            self.load_image(self.current_image_index)
-
-    def next_image(self, event):
-        if self.current_image_index < len(self.images) - 1:
-            self.current_image_index += 1
-            self.load_image(self.current_image_index)
-
+    # frame
     def goto_frame(self):
         frame_number = self.frame_entry.get()
         try:
@@ -529,20 +521,20 @@ class ImageViewer(tk.Tk):
                 print("Frame number out of range")
         except ValueError:
             print("Invalid frame number")
-
-    def process_frames(self):
-        while self.current_image_index < len(self.images):
-            self.load_image(self.current_image_index)
+  
+    def next_image(self, event):
+        if self.current_image_index < len(self.images) - 1:
             self.current_image_index += 1
-            self.update()
-            # 如果想要控制處理速度，可以添加一點延遲，例如：self.after(1000)  # 暫停 1000 毫秒（1 秒）
-        self.save_results_to_json()
-
-    def stop_processing(self):
-        self.processing = False
-
-    def save_results_to_json(self):
-        json_filename = os.path.basename(json_path)
+            self.load_image(self.current_image_index)
+            
+    def prev_image(self, event):
+        if self.current_image_index > 0:
+            self.current_image_index -= 1
+            self.load_image(self.current_image_index)
+ 
+    # save           
+    def output_to_json(self):
+        json_filename = os.path.basename(raw_json_path)
         json_filename_without_extension = os.path.splitext(json_filename)[0]
         output_folder = "output"
         os.makedirs(output_folder, exist_ok=True)
@@ -552,7 +544,55 @@ class ImageViewer(tk.Tk):
             json.dump(self.results, json_file, indent=2)
         print(f"Results saved to {output_filename}")
 
-    def load_new_json(self):
+            
+    def process_frames(self):
+        while self.current_image_index < len(self.images):
+            self.load_image(self.current_image_index)
+            self.current_image_index += 1
+            self.update()
+
+        self.output_to_json()
+
+    def stop_processing(self):
+        self.processing = False
+
+    def save_orientation(self):
+        track_id = int(self.track_id_entry.get())
+        new_orientation = int(self.orientation_entry.get())
+        image_id = self.current_image_index + 1
+
+        # # Save updated additional data back to file
+        # self.save_updated_output_json()
+
+        # Update orientation in memory
+        updated = self.update_orientation(image_id, track_id, new_orientation)
+
+        # Save updated additional data back to file and refresh current frame if update was successful
+        if updated:
+            self.save_updated_output_json()
+            self.load_image(self.current_image_index)
+
+    def update_orientation(self, image_id, track_id, new_orientation):
+        for item in self.additional_data:
+            if item["image_id"] == image_id and item["track_id"] == track_id:
+                item["orientation"] = new_orientation
+                print(f"Updated orientation for image_id {image_id}, track_id {track_id} to {new_orientation}")
+                return True
+        print("Track ID not found for the current image.")
+        return False
+
+    def save_updated_output_json(self):
+        if self.output_json_path and os.path.isdir(os.path.dirname(self.output_json_path)):
+            try:
+                with open(self.output_json_path, 'w') as file:
+                    json.dump(self.additional_data, file, indent=4)
+                print(f"Successfully saved updates to {self.output_json_path}.")
+            except Exception as e:
+                print(f"Failed to save updates: {e}")
+        else:
+            print("No additional JSON file path specified or path is invalid.")
+
+    def load_raw_json(self):
         filepath = tk.filedialog.askopenfilename(
             title="Open JSON file",
             filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
@@ -563,6 +603,33 @@ class ImageViewer(tk.Tk):
                 self.annotations = data['annotations']
                 self.current_image_index = 0
                 self.load_image(self.current_image_index)
+
+        # Automatically determine the additional JSON path based on the chosen file
+        # Assuming the file structure is "labels/labels_2d_pose_stitched_coco/file_name.json"
+        # and needs to be converted to "output/file_name.json"
+        base_name = os.path.basename(filepath)  # Extracts "file_name.json"
+        additional_filepath = os.path.join("output", base_name)  # Constructs "output/file_name.json"
+
+        # Check if the additional file exists before trying to load
+        if os.path.exists(additional_filepath):
+            self.load_output_json(additional_filepath)  # Load the additional JSON
+        else:
+            print(f"Additional JSON file not found: {additional_filepath}")
+
+        # Load the first image from the newly loaded data
+        self.load_image(self.current_image_index)
+
+    def load_output_json(self, output_json_path):
+        try:
+            with open(output_json_path, 'r') as file:
+                self.additional_data = json.load(file)
+            print(f"Additional data loaded successfully from {output_json_path}.")
+        except FileNotFoundError:
+            print(f"Additional JSON file not found: {output_json_path}")
+        except json.JSONDecodeError:
+            print(f"Error decoding JSON from {output_json_path}")
+        except Exception as e:
+            print(f"Unexpected error loading {output_json_path}: {e}")
 
     def process_all_jsons(self):
         # Directory containing the JSON files to be processed
@@ -596,12 +663,34 @@ class ImageViewer(tk.Tk):
 
         print("All files processed.")
 
+    # toggle
+    def toggle_skeleton(self):
+        self.show_skeleton = not self.show_skeleton
+        self.load_image(self.current_image_index)
+
+    def toggle_keypoints(self):
+        self.show_keypoints = not self.show_keypoints
+        self.load_image(self.current_image_index)
+
+    def toggle_box(self):
+        self.show_box = not self.show_box
+        self.load_image(self.current_image_index)
+
+    def toggle_output_info(self):
+        # Toggle the flag
+        self.display_output_info_flag = not self.display_output_info_flag
+        # Reload the current image to update the display based on the new flag state
+        self.load_image(self.current_image_index)
+
+
 if __name__ == "__main__":
-    json_path = "labels/labels_2d_pose_stitched_coco/cubberly-auditorium-2019-04-22_0.json"
-    with open(json_path, "r") as file:
+    raw_json_path = "labels/labels_2d_pose_stitched_coco/bytes-cafe-2019-02-07_0.json"
+    output_json_path = raw_json_path.replace("labels/labels_2d_pose_stitched_coco", "output")
+
+    with open(raw_json_path, "r") as file:
         data = json.load(file)
 
-    viewer = ImageViewer(data['images'], data['annotations'])
+    viewer = ImageViewer(data['images'], data['annotations'], output_json_path)
     viewer.mainloop()
 
-    # viewer.save_results_to_json()
+    # viewer.output_json()
