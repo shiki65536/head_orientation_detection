@@ -73,11 +73,13 @@ def head_orientation_math(keypoints, epsilon=1e-8, threshold=0.15, tolerance=500
             angle_degrees = 30
     elif 60 < angle_degrees <= 70:
         # angle_degrees = 60
-        if ratio < 0.07:
+        # return 12
+        if ratio < 0.06:
             angle_degrees = 90
         else:
             angle_degrees = 60
     elif 70 < angle_degrees <= 100:
+        #return 13
         angle_degrees = 90
     else:
         angle_degrees = 180
@@ -146,12 +148,14 @@ def head_orientation_vis(keypoints, epsilon=1e-8, threshold=200, tolerance=500):
             return 90
             return (math_result + vis_result) / 2  #90
         else:
+            return 90 if math_result >= 60 else 60
             return math_result
     elif left_eye_v and left_shoulder_v:
         if not right_shoulder_v:
             return -90
             return (math_result + vis_result) / 2 #-90
         else:
+            return -90 if math_result <= -60 else -60
             return math_result
     elif not right_eye_v and not left_eye_v:
         if eyes_right:
@@ -215,7 +219,7 @@ class ImageViewer(tk.Tk):
 
         self.track_id_to_color = {}
 
-        self.additional_data = {}
+        self.output_data = {}
         if output_json_path is not None and output_json_path != "None":
             self.load_output_json(output_json_path)
 
@@ -234,7 +238,7 @@ class ImageViewer(tk.Tk):
         self.bind("<Right>", self.next_image)
 
         # JSON
-        self.load_raw_json_button = tk.Button(self, text="Load New JSON", command=self.load_raw_json)
+        self.load_raw_json_button = tk.Button(self, text="Load JSON", command=self.load_raw_json)
         self.load_raw_json_button.pack(side=tk.LEFT)
 
         # GO TO FRAME
@@ -244,8 +248,8 @@ class ImageViewer(tk.Tk):
         self.goto_button.pack(side=tk.LEFT)
 
         # #save
-        # self.save_button = tk.Button(self, text="Save Results", command=self.process_frames)
-        # self.save_button.pack(side=tk.LEFT)
+        self.save_button = tk.Button(self, text="Save Results", command=self.process_frames)
+        self.save_button.pack(side=tk.LEFT)
 
         # self.stop_button = tk.Button(self, text="Stop Processing", command=self.stop_processing)
         # self.stop_button.pack(side=tk.LEFT)
@@ -427,6 +431,8 @@ class ImageViewer(tk.Tk):
         canvas_width = self.winfo_screenwidth()
         self.canvas.create_text(canvas_width // 2, 10, text=f"Image ID: {image_id}", font=('Arial', 12), anchor=tk.N,
                                 fill="white")
+        self.canvas.create_text(canvas_width // 2 + 1, 11, text=f"Image ID: {image_id}", font=('Arial', 12), anchor=tk.N,
+                                fill="black")
 
         # color
         colors = ["salmon", "turquoise", "orange", "chartreuse", "orchid"]
@@ -488,7 +494,7 @@ class ImageViewer(tk.Tk):
 
         # Print the head orientation for each track_id to the console
         print(f"Track ID: {track_id}  Orientation: {orientation}°")
-        
+
     # display
     def display_output_info(self, image_id, track_id, base_x, base_y):
         if not self.display_output_info_flag:
@@ -497,17 +503,19 @@ class ImageViewer(tk.Tk):
         image_id = int(image_id) - 1
         track_id = int(track_id)
 
-        output_info = next((item for item in self.additional_data if
+        output_info = next((item for item in self.output_data if
                                 int(item["image_id"]) == image_id and int(item["track_id"]) == track_id), None)
 
         if output_info:
             orientation = output_info.get("orientation", "N/A")
-            info_text = f"Record: {orientation}°"
+            info_text = f"{orientation}°"
             vertical_offset = 40
+            self.canvas.create_text(base_x + 1, base_y + vertical_offset + 1, text=info_text, font=('Arial', 10), anchor=tk.NW,
+                                    fill="purple")
             self.canvas.create_text(base_x, base_y + vertical_offset, text=info_text, font=('Arial', 10), anchor=tk.NW,
-                                    fill="white")
+                                    fill="yellow")
         else:
-            print(f"No additional info found for image_id {image_id}, track_id {track_id}")  # Confirming failed search
+            print(f"No output info found for image_id {image_id}, track_id {track_id}")  # Confirming failed search
 
     # frame
     def goto_frame(self):
@@ -521,18 +529,18 @@ class ImageViewer(tk.Tk):
                 print("Frame number out of range")
         except ValueError:
             print("Invalid frame number")
-  
+
     def next_image(self, event):
         if self.current_image_index < len(self.images) - 1:
             self.current_image_index += 1
             self.load_image(self.current_image_index)
-            
+
     def prev_image(self, event):
         if self.current_image_index > 0:
             self.current_image_index -= 1
             self.load_image(self.current_image_index)
- 
-    # save           
+
+    # save
     def output_to_json(self):
         json_filename = os.path.basename(raw_json_path)
         json_filename_without_extension = os.path.splitext(json_filename)[0]
@@ -544,7 +552,7 @@ class ImageViewer(tk.Tk):
             json.dump(self.results, json_file, indent=2)
         print(f"Results saved to {output_filename}")
 
-            
+
     def process_frames(self):
         while self.current_image_index < len(self.images):
             self.load_image(self.current_image_index)
@@ -559,21 +567,18 @@ class ImageViewer(tk.Tk):
     def save_orientation(self):
         track_id = int(self.track_id_entry.get())
         new_orientation = int(self.orientation_entry.get())
-        image_id = self.current_image_index + 1
-
-        # # Save updated additional data back to file
-        # self.save_updated_output_json()
+        image_id = self.current_image_index
 
         # Update orientation in memory
         updated = self.update_orientation(image_id, track_id, new_orientation)
 
-        # Save updated additional data back to file and refresh current frame if update was successful
+        # Save updated output data back to file and refresh current frame if update was successful
         if updated:
             self.save_updated_output_json()
             self.load_image(self.current_image_index)
 
     def update_orientation(self, image_id, track_id, new_orientation):
-        for item in self.additional_data:
+        for item in self.output_data:
             if item["image_id"] == image_id and item["track_id"] == track_id:
                 item["orientation"] = new_orientation
                 print(f"Updated orientation for image_id {image_id}, track_id {track_id} to {new_orientation}")
@@ -585,12 +590,12 @@ class ImageViewer(tk.Tk):
         if self.output_json_path and os.path.isdir(os.path.dirname(self.output_json_path)):
             try:
                 with open(self.output_json_path, 'w') as file:
-                    json.dump(self.additional_data, file, indent=4)
+                    json.dump(self.output_data, file, indent=4)
                 print(f"Successfully saved updates to {self.output_json_path}.")
             except Exception as e:
                 print(f"Failed to save updates: {e}")
         else:
-            print("No additional JSON file path specified or path is invalid.")
+            print("No output JSON file path specified or path is invalid.")
 
     def load_raw_json(self):
         filepath = tk.filedialog.askopenfilename(
@@ -604,17 +609,15 @@ class ImageViewer(tk.Tk):
                 self.current_image_index = 0
                 self.load_image(self.current_image_index)
 
-        # Automatically determine the additional JSON path based on the chosen file
-        # Assuming the file structure is "labels/labels_2d_pose_stitched_coco/file_name.json"
-        # and needs to be converted to "output/file_name.json"
-        base_name = os.path.basename(filepath)  # Extracts "file_name.json"
-        additional_filepath = os.path.join("output", base_name)  # Constructs "output/file_name.json"
+        # Automatically determine the output JSON path based on the chosen file
+        base_name = os.path.basename(filepath)
+        self.output_json_path = os.path.join("output", base_name)  # Constructs "output/file_name.json"
 
-        # Check if the additional file exists before trying to load
-        if os.path.exists(additional_filepath):
-            self.load_output_json(additional_filepath)  # Load the additional JSON
+        # Check if the output file exists before trying to load
+        if os.path.exists(self.output_json_path):
+            self.load_output_json(self.output_json_path)  # Load the output JSON
         else:
-            print(f"Additional JSON file not found: {additional_filepath}")
+            print(f"output JSON file not found: {self.output_json_path}")
 
         # Load the first image from the newly loaded data
         self.load_image(self.current_image_index)
@@ -622,10 +625,10 @@ class ImageViewer(tk.Tk):
     def load_output_json(self, output_json_path):
         try:
             with open(output_json_path, 'r') as file:
-                self.additional_data = json.load(file)
-            print(f"Additional data loaded successfully from {output_json_path}.")
+                self.output_data = json.load(file)
+            print(f"output data loaded successfully from {output_json_path}.")
         except FileNotFoundError:
-            print(f"Additional JSON file not found: {output_json_path}")
+            print(f"output JSON file not found: {output_json_path}")
         except json.JSONDecodeError:
             print(f"Error decoding JSON from {output_json_path}")
         except Exception as e:
@@ -686,6 +689,7 @@ class ImageViewer(tk.Tk):
 if __name__ == "__main__":
     raw_json_path = "labels/labels_2d_pose_stitched_coco/bytes-cafe-2019-02-07_0.json"
     output_json_path = raw_json_path.replace("labels/labels_2d_pose_stitched_coco", "output")
+
 
     with open(raw_json_path, "r") as file:
         data = json.load(file)
