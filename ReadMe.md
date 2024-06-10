@@ -2,19 +2,18 @@
 
 ![Head Orientation detection example](https://shiki65536.github.io/img/posts/orientation.png)
 
+Framework
 
-Detect head orientation by joints.
-
-How the generator works
-
-1. Load human joints coordinate data from JSON file.
-2. Calculate head orientation by coordinate points.
-3. Output the generated data to another JSON file.
+The algorithm estimates head orientation using trigonometry, observability classification and and optimizer.
+- Trigonometric principles estimate head orientation. 
+- Observability classifier refines estimates. 
+- Fusion optimizer categorizes orientation into 12 predefined angles for accurate predictions.
 
 Functions
 
-- Read JSON
-- Review head orientation data by frame.
-- Jump to specific frame.
+- Read JSON files.
+- Review predictions frame-by-frame.
+- Navigate frames
 - Toggle skeleton.
 - Toggle joint points.
+- Amend data.
