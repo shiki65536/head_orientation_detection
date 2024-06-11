@@ -509,8 +509,9 @@ class ImageViewer(tk.Tk):
             print("No output JSON file path specified or path is invalid.")
 
     def load_raw_json(self):
-        filepath = filedialog.askopenfilename(title="Open JSON file",
-                                              filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
+        filepath = tk.filedialog.askopenfilename(
+            title="Open JSON file",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
         if filepath:
             with open(filepath, "r") as file:
                 data = json.load(file)
